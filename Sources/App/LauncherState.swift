@@ -4,12 +4,20 @@ enum LauncherPhase: Equatable {
     case hidden
     case actionSelection
     case awaitingInput(actionID: String)
+    case browsingFiles(actionID: String)
 }
 
 enum LauncherCommand: Equatable {
     case none
     case execute(actionID: String, input: String?)
+    case searchFiles(actionID: String, query: String)
+    case openFile
     case close
+}
+
+enum InputConfirmBehavior {
+    case execute
+    case searchThenBrowse
 }
 
 struct LauncherStateMachine {
@@ -24,6 +32,9 @@ struct LauncherStateMachine {
     }
 
     mutating func updateQuery(_ value: String) {
+        if case .browsingFiles(let actionID) = phase {
+            phase = .awaitingInput(actionID: actionID)
+        }
         query = value
         selectedIndex = 0
     }
@@ -37,7 +48,12 @@ struct LauncherStateMachine {
         selectedIndex = (next % count + count) % count
     }
 
-    mutating func confirm(selectedActionID: String?, requiresInput: Bool, input: String) -> LauncherCommand {
+    mutating func confirm(
+        selectedActionID: String?,
+        requiresInput: Bool,
+        inputConfirm: InputConfirmBehavior,
+        input: String
+    ) -> LauncherCommand {
         switch phase {
         case .hidden:
             return .none
@@ -56,16 +72,28 @@ struct LauncherStateMachine {
         case .awaitingInput(let actionID):
             let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return .none }
+            if inputConfirm == .searchThenBrowse {
+                phase = .browsingFiles(actionID: actionID)
+                query = trimmed
+                selectedIndex = 0
+                return .searchFiles(actionID: actionID, query: trimmed)
+            }
             phase = .hidden
             query = ""
             selectedIndex = 0
             return .execute(actionID: actionID, input: trimmed)
+        case .browsingFiles:
+            return .openFile
         }
     }
 
     mutating func cancel() -> LauncherCommand {
         switch phase {
         case .hidden:
+            return .none
+        case .browsingFiles(let actionID):
+            phase = .awaitingInput(actionID: actionID)
+            selectedIndex = 0
             return .none
         case .awaitingInput:
             phase = .actionSelection

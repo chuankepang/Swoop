@@ -3,13 +3,18 @@ import AppKit
 final class FileSearchAction: LauncherAction {
     let id = "files.find"
     let title = "Find Files"
-    let aliases = ["find", "fin", "files", "file", "mdfind", "spotlight", "查找", "文件", "chazhao", "wenjian"]
+    let aliases = ["find", "fin", "files", "file", "mdfind", "spotlight", "查找", "文件"]
     let keywords = ["search", "documents"]
     let kind: ActionKind = .fileSearch
     let requiresInput = true
     let inputPlaceholder: String? = "Search files..."
-    let presentsCandidatesDuringInput = true
-    lazy var icon: NSImage? = ActionIconFactory.brand(.files)
+    let inputConfirmBehavior: InputConfirmBehavior = .searchThenBrowse
+    lazy var icon: NSImage? = IconProvider.brand(.files)
+    lazy var searchEntity: SearchableEntity = SearchableEntity.build(
+        displayName: title,
+        aliases: aliases,
+        keywords: keywords
+    )
     private let spotlight: SpotlightService
 
     init(spotlight: SpotlightService) {
@@ -17,30 +22,48 @@ final class FileSearchAction: LauncherAction {
     }
 
     func execute(input: String?) {
-        guard let input, !input.isEmpty else { return }
-        spotlight.search(query: input) { results in
-            guard let first = results.first else { return }
-            NSWorkspace.shared.open(first.url)
-        }
+        _ = input
     }
 
-    func inputCandidates(query: String, completion: @escaping ([SearchResult]) -> Void) {
+    func searchFiles(query: String, completion: @escaping ([SearchResult]) -> Void) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 1 else {
+        guard !trimmed.isEmpty else {
             completion([])
             return
         }
         spotlight.search(query: trimmed) { files in
-            let results = files.enumerated().map { index, file in
-                SearchResult(
-                    actionID: self.id,
-                    title: file.name,
-                    subtitle: file.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"),
-                    score: 900 - Double(index),
-                    payload: .file(url: file.url)
-                )
-            }
-            completion(results)
+            let ranked = Self.rank(files, query: trimmed)
+            completion(ranked)
         }
+    }
+
+    func inputCandidates(query: String, completion: @escaping ([SearchResult]) -> Void) {
+        searchFiles(query: query, completion: completion)
+    }
+
+    static func rank(_ files: [SpotlightFile], query: String) -> [SearchResult] {
+        let normalizedQuery = SearchNormalizer.normalize(query)
+        return files.map { file -> SearchResult in
+            let name = SearchNormalizer.normalize(file.name)
+            var score = 200.0
+            if name == normalizedQuery {
+                score = 1000
+            } else if name.hasPrefix(normalizedQuery) {
+                score = 800
+            } else if let tightness = FuzzyMatcher.subsequenceTightness(query: SearchNormalizer.compact(normalizedQuery), text: SearchNormalizer.compact(name)) {
+                score = 400 + tightness * 200
+            }
+            let home = NSHomeDirectory()
+            let subtitle = file.url.path.replacingOccurrences(of: home, with: "~")
+            return SearchResult(
+                actionID: "files.find",
+                title: file.name,
+                subtitle: subtitle,
+                score: score,
+                payload: .file(url: file.url),
+                matchReason: "filename"
+            )
+        }
+        .sorted { $0.score > $1.score }
     }
 }

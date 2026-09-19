@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupMenu()
         apps.scan { [weak self] installed in
-            self?.registry.register(installed.map(ApplicationAction.init))
+            self?.registry.register(installed.map { ApplicationAction(app: $0) })
         }
 
         let shouldShow = ProcessInfo.processInfo.arguments.contains("--show")
@@ -52,9 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Lock Screen",
                 aliases: ["lock", "loc", "lk", "锁屏", "suoping"],
                 keywords: ["security"],
-                icon: ActionIconFactory.glyph(
+                icon: IconProvider.systemGlyph(
                     "lock.fill",
-                    tint: .white,
                     fill: NSColor(srgbRed: 0.35, green: 0.42, blue: 0.52, alpha: 1)
                 ),
                 command: .lockScreen,
@@ -65,9 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Sleep",
                 aliases: ["sleep", "slp"],
                 keywords: ["power"],
-                icon: ActionIconFactory.glyph(
+                icon: IconProvider.systemGlyph(
                     "moon.fill",
-                    tint: .white,
                     fill: NSColor(srgbRed: 0.35, green: 0.28, blue: 0.62, alpha: 1)
                 ),
                 command: .sleep,
@@ -78,9 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 title: "Screen Saver",
                 aliases: ["screensaver", "saver"],
                 keywords: ["display"],
-                icon: ActionIconFactory.glyph(
+                icon: IconProvider.systemGlyph(
                     "sparkles",
-                    tint: .white,
                     fill: NSColor(srgbRed: 0.55, green: 0.32, blue: 0.72, alpha: 1)
                 ),
                 command: .screenSaver,
@@ -99,8 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = ActionIconFactory.menuBarImage()
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.image = IconProvider.menuBarTemplate()
         item.button?.imagePosition = .imageOnly
         item.button?.toolTip = "Swoop"
         let menu = NSMenu()
@@ -135,11 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func finderIcon() -> NSImage {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.finder") {
-            return ActionIconFactory.roundedAppIcon(NSWorkspace.shared.icon(forFile: url.path))
+            return IconProvider.application(NSWorkspace.shared.icon(forFile: url.path))
         }
-        return ActionIconFactory.glyph(
+        return IconProvider.systemGlyph(
             "folder.fill",
-            tint: .white,
             fill: NSColor(srgbRed: 0.20, green: 0.55, blue: 0.95, alpha: 1)
         )
     }

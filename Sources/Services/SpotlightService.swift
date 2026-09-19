@@ -1,12 +1,13 @@
 import Foundation
 
-struct SpotlightFile {
+struct SpotlightFile: Equatable {
     let name: String
     let url: URL
 }
 
 final class SpotlightService {
     private let queue = DispatchQueue(label: "local.swoop.spotlight", qos: .userInitiated)
+    private let lock = NSLock()
     private var generation = 0
 
     func search(query: String, limit: Int = 12, completion: @escaping ([SpotlightFile]) -> Void) {
@@ -16,8 +17,11 @@ final class SpotlightService {
             return
         }
 
+        lock.lock()
         generation += 1
         let token = generation
+        lock.unlock()
+
         queue.async {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
@@ -39,8 +43,7 @@ final class SpotlightService {
                 let path = String(line)
                 guard !path.isEmpty else { return nil }
                 let url = URL(fileURLWithPath: path)
-                let hidden = url.pathComponents.contains { $0.hasPrefix(".") }
-                if hidden { return nil }
+                if url.pathComponents.contains(where: { $0.hasPrefix(".") }) { return nil }
                 return SpotlightFile(name: url.lastPathComponent, url: url)
             }
             .prefix(limit)
@@ -50,7 +53,10 @@ final class SpotlightService {
 
     private func finish(token: Int, files: [SpotlightFile], completion: @escaping ([SpotlightFile]) -> Void) {
         DispatchQueue.main.async {
-            guard token == self.generation else { return }
+            self.lock.lock()
+            let current = self.generation
+            self.lock.unlock()
+            guard token == current else { return }
             completion(files)
         }
     }

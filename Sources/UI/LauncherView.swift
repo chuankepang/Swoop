@@ -1,53 +1,83 @@
 import AppKit
 
 final class LauncherView: NSView {
+    let chrome = NSView()
     let effect = NSVisualEffectView()
     let input = SearchInputView()
     let list = CandidateListView()
     private let divider = NSBox()
+    private let border = NSView()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerRadius = LauncherLayout.cornerRadius
-        layer?.masksToBounds = true
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.28
+        layer?.shadowRadius = LayoutMetrics.shadowRadius
+        layer?.shadowOffset = CGSize(width: 0, height: -6)
 
-        effect.material = .popover
+        chrome.wantsLayer = true
+        chrome.layer?.cornerRadius = LayoutMetrics.cornerRadius
+        chrome.layer?.masksToBounds = true
+        addSubview(chrome)
+
+        effect.material = .hudWindow
         effect.blendingMode = .behindWindow
         effect.state = .active
+        effect.isEmphasized = true
         effect.appearance = nil
-        addSubview(effect)
+        chrome.addSubview(effect)
+
+        border.wantsLayer = true
+        border.layer?.cornerRadius = LayoutMetrics.cornerRadius
+        border.layer?.borderWidth = LayoutMetrics.hairline
+        chrome.addSubview(border)
 
         divider.boxType = .separator
-        addSubview(input)
-        addSubview(divider)
-        addSubview(list)
+        chrome.addSubview(input)
+        chrome.addSubview(divider)
+        chrome.addSubview(list)
+        updateHairline()
     }
 
     required init?(coder: NSCoder) { nil }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateHairline()
+        layer?.shadowOpacity = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? 0.45 : 0.22
+    }
+
+    private func updateHairline() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            border.layer?.borderColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+        }
+    }
+
     override func layout() {
         super.layout()
-        effect.frame = bounds
+        chrome.frame = bounds
+        border.frame = chrome.bounds
         input.frame = NSRect(
             x: 0,
-            y: bounds.height - LauncherLayout.inputRowHeight,
-            width: bounds.width,
-            height: LauncherLayout.inputRowHeight
+            y: chrome.bounds.height - LayoutMetrics.inputRowHeight,
+            width: chrome.bounds.width,
+            height: LayoutMetrics.inputRowHeight
         )
         let hasList = list.intrinsicContentSize.height > 0
         divider.isHidden = !hasList
         divider.frame = NSRect(
-            x: 12,
+            x: LayoutMetrics.padding,
             y: input.frame.minY - 1,
-            width: bounds.width - 24,
+            width: chrome.bounds.width - LayoutMetrics.padding * 2,
             height: 1
         )
         list.frame = NSRect(
             x: 0,
-            y: 4,
-            width: bounds.width,
-            height: max(0, (hasList ? divider.frame.minY : input.frame.minY) - 6)
+            y: 6,
+            width: chrome.bounds.width,
+            height: max(0, (hasList ? divider.frame.minY : input.frame.minY) - 8)
         )
     }
 }

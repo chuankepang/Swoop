@@ -1,106 +1,87 @@
 import Foundation
 
+struct MatchScore: Equatable {
+    let value: Double
+    let reason: String
+
+    static let none = MatchScore(value: 0, reason: "none")
+}
+
 enum FuzzyMatcher {
-    static func score(query rawQuery: String, title: String, aliases: [String], keywords: [String]) -> Double {
-        let query = normalize(rawQuery)
-        if query.isEmpty { return 0 }
+    static func score(query rawQuery: String, entity: SearchableEntity) -> MatchScore {
+        let query = SearchNormalizer.normalize(rawQuery)
+        if query.isEmpty { return .none }
+        let compactQuery = SearchNormalizer.compact(query)
+        var best = MatchScore.none
 
-        let titleNorm = normalize(title)
-        let words = words(in: titleNorm)
-        var best = 0.0
-
-        if titleNorm == query {
-            best = max(best, RankingWeights.exactTitle)
+        func consider(_ value: Double, _ reason: String) {
+            if value > best.value {
+                best = MatchScore(value: value, reason: reason)
+            }
         }
 
-        if titleNorm.hasPrefix(query) {
-            best = max(best, prefixScore(RankingWeights.titlePrefix, query: query, target: titleNorm))
+        let display = SearchNormalizer.normalize(entity.displayName)
+        if display == query {
+            consider(RankingWeights.exactTitle, "exact display")
         }
 
-        if let first = words.first, first.hasPrefix(query) {
-            best = max(best, prefixScore(RankingWeights.firstWordPrefix, query: query, target: first))
-        }
-
-        for alias in aliases {
-            let aliasNorm = normalize(alias)
-            guard !aliasNorm.isEmpty else { continue }
+        for alias in entity.aliases {
+            let aliasNorm = SearchNormalizer.normalize(alias)
             if aliasNorm == query {
-                let shortBonus = aliasNorm.count <= 4 ? 20.0 : 0
-                best = max(best, RankingWeights.exactAlias + shortBonus)
+                consider(RankingWeights.exactAlias, "exact alias")
             } else if aliasNorm.hasPrefix(query) {
-                let base = aliasNorm.count <= 6 ? RankingWeights.shortAliasPrefix : RankingWeights.aliasPrefix
-                best = max(best, prefixScore(base, query: query, target: aliasNorm))
+                consider(prefix(RankingWeights.aliasPrefix, query: query, target: aliasNorm), "alias prefix")
             }
         }
 
-        if matchesWordInitials(query: query, words: words) {
-            best = max(best, RankingWeights.wordInitials + Double(query.count) * 4)
-        }
-
-        for word in words {
-            if word.hasPrefix(query) {
-                best = max(best, prefixScore(RankingWeights.wordPrefix, query: query, target: word))
+        for term in entity.terms {
+            if term == query || term == compactQuery {
+                consider(RankingWeights.exactNormalized, "exact normalized")
+            } else if term.hasPrefix(query) || term.hasPrefix(compactQuery) {
+                let weight = Transliterator.hasCJK(entity.displayName) && term.allSatisfy({ $0.isASCII })
+                    ? RankingWeights.transliterationPrefix
+                    : RankingWeights.prefix
+                let reason = weight == RankingWeights.transliterationPrefix ? "transliteration prefix" : "prefix"
+                consider(prefix(weight, query: compactQuery.count >= query.count ? compactQuery : query, target: term), reason)
             }
         }
 
-        for keyword in keywords {
-            let keyNorm = normalize(keyword)
-            if keyNorm == query {
-                best = max(best, RankingWeights.keyword + 40)
-            } else if keyNorm.hasPrefix(query) || query.hasPrefix(keyNorm) {
-                best = max(best, RankingWeights.keyword)
+        if entity.terms.contains(where: { SearchNormalizer.compact($0) == compactQuery && Transliterator.hasCJK(entity.displayName) }) {
+            consider(RankingWeights.transliterationExact, "transliteration exact")
+        }
+
+        for initial in entity.initials {
+            if initial == compactQuery || initial.hasPrefix(compactQuery) {
+                consider(RankingWeights.wordInitials + Double(query.count) * 4, "word initials")
             }
         }
 
-        if let sub = subsequenceTightness(query: query, text: titleNorm) {
-            best = max(best, RankingWeights.subsequence + sub * 120)
+        for keyword in entity.keywords {
+            if keyword == query {
+                consider(RankingWeights.keyword + 40, "keyword exact")
+            } else if keyword.hasPrefix(query) || query.hasPrefix(keyword) {
+                consider(RankingWeights.keyword, "keyword")
+            }
         }
 
-        for word in words {
-            if let sub = subsequenceTightness(query: query, text: word) {
-                best = max(best, RankingWeights.subsequence + sub * 140)
-            }
+        if let sub = subsequenceTightness(query: compactQuery, text: SearchNormalizer.compact(display)) {
+            consider(RankingWeights.subsequence + sub * 120, "fuzzy subsequence")
         }
 
         return best
     }
 
-    static func normalize(_ value: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            .lowercased()
-    }
-
-    static func words(in text: String) -> [String] {
-        let scalars = text.unicodeScalars.map { scalar -> Character in
-            if CharacterSet.alphanumerics.contains(scalar) { return Character(scalar) }
-            return " "
-        }
-        return String(scalars)
-            .split(whereSeparator: { $0 == " " })
-            .map(String.init)
-            .filter { !$0.isEmpty }
-    }
-
-    static func matchesWordInitials(query: String, words: [String]) -> Bool {
-        guard !words.isEmpty else { return false }
-        let initials = words.compactMap { $0.first }.map { String($0) }.joined()
-        if initials.hasPrefix(query) || initials == query { return true }
-
-        var remaining = Array(query)
-        for word in words {
-            guard let first = remaining.first, word.first == first else { continue }
-            remaining.removeFirst()
-            if remaining.isEmpty { return true }
-        }
-        return remaining.isEmpty && query.count >= 2
+    static func score(query: String, title: String, aliases: [String], keywords: [String]) -> Double {
+        score(
+            query: query,
+            entity: SearchableEntity.build(displayName: title, aliases: aliases, keywords: keywords)
+        ).value
     }
 
     static func subsequenceTightness(query: String, text: String) -> Double? {
         let needle = Array(query)
         let haystack = Array(text)
         guard !needle.isEmpty, needle.count <= haystack.count else { return nil }
-
         var i = 0
         var lastIndex = -1
         var consecutive = 0
@@ -119,7 +100,7 @@ enum FuzzyMatcher {
         return min(1, density * 0.7 + consecutiveBonus * 0.3)
     }
 
-    private static func prefixScore(_ base: Double, query: String, target: String) -> Double {
+    private static func prefix(_ base: Double, query: String, target: String) -> Double {
         let tightness = Double(query.count) / Double(max(target.count, 1))
         let brevity = max(0, 1 - Double(target.count) / 24)
         return base + tightness * 50 + brevity * 30

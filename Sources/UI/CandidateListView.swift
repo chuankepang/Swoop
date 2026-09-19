@@ -25,7 +25,7 @@ final class CandidateListView: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: CGFloat(rows.count) * LauncherLayout.rowHeight)
+        NSSize(width: NSView.noIntrinsicMetric, height: CGFloat(rows.count) * LayoutMetrics.rowHeight)
     }
 
     override func layout() {
@@ -33,9 +33,9 @@ final class CandidateListView: NSView {
         for (index, row) in rows.enumerated() {
             row.frame = NSRect(
                 x: 0,
-                y: bounds.height - CGFloat(index + 1) * LauncherLayout.rowHeight,
+                y: bounds.height - CGFloat(index + 1) * LayoutMetrics.rowHeight,
                 width: bounds.width,
-                height: LauncherLayout.rowHeight
+                height: LayoutMetrics.rowHeight
             )
         }
     }

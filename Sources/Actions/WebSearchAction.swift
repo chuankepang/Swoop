@@ -16,7 +16,7 @@ final class WebSearchAction: LauncherAction {
     var kind: ActionKind { .webSearch }
     var requiresInput: Bool { true }
     var inputPlaceholder: String? { provider.placeholder }
-    lazy var icon: NSImage? = ActionIconFactory.brand(provider.mark)
+    lazy var icon: NSImage? = IconProvider.brand(provider.mark)
 
     func execute(input: String?) {
         guard let input, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -36,7 +36,8 @@ final class WebSearchAction: LauncherAction {
                 title: "Search \(shortName) for “\(trimmed)”",
                 subtitle: provider.urlTemplate,
                 score: RankingWeights.exactTitle,
-                payload: .prompt(text: trimmed)
+                payload: .prompt(text: trimmed),
+                matchReason: "prompt"
             )
         ])
     }

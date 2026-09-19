@@ -1,10 +1,16 @@
 import Foundation
 
 runFuzzyMatcherTests()
+runSearchNormalizationTests()
+runPinyinMatchingTests()
 runRankingEngineTests()
 runActionRegistryTests()
 runStateMachineTests()
 runURLEncoderTests()
+runFileSearchTests()
+runApplicationIndexTests()
+runApplicationLaunchMatrix()
+runFileSearchIntegrationTests()
 
 if TestSupport.failures == 0 {
     print("All tests passed.")

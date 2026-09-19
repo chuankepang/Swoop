@@ -11,7 +11,7 @@ final class LauncherController: NSObject, NSWindowDelegate {
     private var searchTimer: Timer?
     private var suppressResignClose = false
     private var shownAt: TimeInterval = 0
-    private let launcherIcon = ActionIconFactory.launcher()
+    private let launcherIcon = IconProvider.launcherState()
 
     init(registry: ActionRegistry, searchEngine: SearchEngine, history: UsageHistory) {
         self.registry = registry
@@ -41,12 +41,12 @@ final class LauncherController: NSObject, NSWindowDelegate {
         }
     }
 
-    func show() {
+    func show(error: String? = nil) {
         machine.show()
         shownAt = ProcessInfo.processInfo.systemUptime
         root.input.field.stringValue = ""
         refreshCandidates()
-        updateChrome()
+        updateChrome(error: error)
         resize()
         panel.placeCentered()
         stealFocus()
@@ -102,7 +102,9 @@ final class LauncherController: NSObject, NSWindowDelegate {
             if command == .close || machine.phase == .hidden {
                 hidePanel()
             } else {
-                root.input.field.stringValue = ""
+                if case .actionSelection = machine.phase {
+                    root.input.field.stringValue = ""
+                }
                 refreshCandidates()
                 updateChrome()
                 resize()
@@ -119,7 +121,7 @@ final class LauncherController: NSObject, NSWindowDelegate {
         machine.updateQuery(query)
         switch machine.phase {
         case .awaitingInput(let actionID):
-            if let action = registry.action(id: actionID), action.presentsCandidatesDuringInput {
+            if let action = registry.action(id: actionID), action.inputConfirmBehavior == .searchThenBrowse {
                 scheduleDynamicSearch(action: action, query: query)
             } else {
                 refreshCandidates()
@@ -135,16 +137,21 @@ final class LauncherController: NSObject, NSWindowDelegate {
         switch machine.phase {
         case .hidden:
             return
-        case .awaitingInput(let actionID):
-            if let selected = selectedCandidate(), case .file(let url) = selected.payload {
-                finish {
-                    self.history.record(actionID: actionID)
-                    NSWorkspace.shared.open(url)
-                }
-                return
+        case .browsingFiles(let actionID):
+            guard let selected = selectedCandidate(), case .file(let url) = selected.payload else { return }
+            finish {
+                self.history.record(actionID: actionID)
+                NSWorkspace.shared.open(url)
             }
+        case .awaitingInput(let actionID):
+            guard let action = registry.action(id: actionID) else { return }
             let input = root.input.field.stringValue
-            let command = machine.confirm(selectedActionID: actionID, requiresInput: true, input: input)
+            let command = machine.confirm(
+                selectedActionID: actionID,
+                requiresInput: true,
+                inputConfirm: action.inputConfirmBehavior,
+                input: input
+            )
             perform(command)
         case .actionSelection:
             guard let selected = selectedCandidate() else { return }
@@ -152,6 +159,7 @@ final class LauncherController: NSObject, NSWindowDelegate {
             let command = machine.confirm(
                 selectedActionID: action.id,
                 requiresInput: action.requiresInput,
+                inputConfirm: action.inputConfirmBehavior,
                 input: root.input.field.stringValue
             )
             if case .awaitingInput = machine.phase {
@@ -172,10 +180,28 @@ final class LauncherController: NSObject, NSWindowDelegate {
             return
         case .close:
             hidePanel()
+        case .searchFiles(let actionID, let query):
+            guard let action = registry.action(id: actionID) else { return }
+            action.inputCandidates(query: query) { [weak self] results in
+                guard let self else { return }
+                guard case .browsingFiles(let id) = self.machine.phase, id == actionID else { return }
+                self.candidates = results
+                self.machine.selectedIndex = 0
+                self.renderList()
+                self.resize()
+                self.panel.makeFirstResponder(self.root.input.field)
+            }
+        case .openFile:
+            return
         case .execute(let actionID, let input):
             finish {
                 self.history.record(actionID: actionID)
-                self.registry.action(id: actionID)?.execute(input: input)
+                guard let action = self.registry.action(id: actionID) else { return }
+                action.execute(input: input) { error in
+                    if let error {
+                        self.show(error: error.localizedDescription)
+                    }
+                }
             }
         }
     }
@@ -204,7 +230,7 @@ final class LauncherController: NSObject, NSWindowDelegate {
 
     private func scheduleDynamicSearch(action: any LauncherAction, query: String) {
         searchTimer?.invalidate()
-        let timer = Timer(timeInterval: 0.12, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
             action.inputCandidates(query: query) { results in
                 guard let self else { return }
                 guard case .awaitingInput(let id) = self.machine.phase, id == action.id else { return }
@@ -227,12 +253,14 @@ final class LauncherController: NSObject, NSWindowDelegate {
             candidates = []
         case .actionSelection:
             candidates = searchEngine.searchActions(query: machine.query)
+        case .browsingFiles:
+            break
         case .awaitingInput(let actionID):
             guard let action = registry.action(id: actionID) else {
                 candidates = []
                 break
             }
-            if action.presentsCandidatesDuringInput {
+            if action.inputConfirmBehavior == .searchThenBrowse {
                 candidates = []
                 if !machine.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     scheduleDynamicSearch(action: action, query: machine.query)
@@ -265,30 +293,30 @@ final class LauncherController: NSObject, NSWindowDelegate {
 
     private func icon(for item: SearchResult) -> NSImage? {
         if case .file(let url) = item.payload {
-            return ActionIconFactory.fileIcon(at: url)
+            return IconProvider.file(at: url)
         }
         return registry.action(id: item.actionID)?.icon ?? launcherIcon
     }
 
-    private func updateChrome() {
+    private func updateChrome(error: String? = nil) {
         switch machine.phase {
         case .hidden, .actionSelection:
             root.input.setIcon(launcherIcon)
-            root.input.field.placeholderString = "Search actions..."
-        case .awaitingInput(let actionID):
+            root.input.field.placeholderString = error ?? "Search actions..."
+        case .awaitingInput(let actionID), .browsingFiles(let actionID):
             let action = registry.action(id: actionID)
             root.input.setIcon(action?.icon ?? launcherIcon)
-            root.input.field.placeholderString = action?.inputPlaceholder ?? "Type..."
+            root.input.field.placeholderString = error ?? action?.inputPlaceholder ?? "Type..."
         }
     }
 
     private func resize() {
         let rows = CGFloat(max(candidates.count, 0))
-        let listHeight = rows * LauncherLayout.rowHeight
-        let extra: CGFloat = rows == 0 ? 0 : 8
-        let height = LauncherLayout.inputRowHeight + listHeight + extra
+        let listHeight = rows * LayoutMetrics.rowHeight
+        let extra: CGFloat = rows == 0 ? 0 : 10
+        let height = LayoutMetrics.inputRowHeight + listHeight + extra
         var frame = panel.frame
-        let newSize = NSSize(width: LauncherLayout.panelWidth, height: height)
+        let newSize = NSSize(width: LayoutMetrics.panelWidth, height: height)
         frame.origin.y += frame.size.height - newSize.height
         frame.size = newSize
         panel.setFrame(frame, display: true)

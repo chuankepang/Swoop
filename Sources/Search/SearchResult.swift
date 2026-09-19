@@ -6,6 +6,7 @@ struct SearchResult {
     let subtitle: String?
     let score: Double
     let payload: Payload
+    var matchReason: String? = nil
 
     enum Payload {
         case action
@@ -17,4 +18,5 @@ struct SearchResult {
 struct RankedAction {
     let actionID: String
     let score: Double
+    let reason: String
 }

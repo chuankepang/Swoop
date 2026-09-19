@@ -48,15 +48,6 @@ enum ActionIconFactory {
         brand(.launcher)
     }
 
-    static func menuBarImage() -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-            drawSwoop(in: rect.insetBy(dx: 1.5, dy: 1.5), color: .black)
-            return true
-        }
-        image.isTemplate = true
-        return image
-    }
-
     private static func isDark() -> Bool {
         NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }

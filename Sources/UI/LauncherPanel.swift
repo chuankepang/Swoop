@@ -5,7 +5,7 @@ final class LauncherPanel: NSPanel {
 
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: LauncherLayout.panelWidth, height: LauncherLayout.inputRowHeight),
+            contentRect: NSRect(x: 0, y: 0, width: LayoutMetrics.panelWidth, height: LayoutMetrics.inputRowHeight),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -15,7 +15,7 @@ final class LauncherPanel: NSPanel {
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)))
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false
         isMovableByWindowBackground = true
         hidesOnDeactivate = false
         animationBehavior = .utilityWindow
@@ -24,7 +24,7 @@ final class LauncherPanel: NSPanel {
         titlebarAppearsTransparent = true
         isReleasedWhenClosed = false
         editor.isFieldEditor = true
-        editor.font = .systemFont(ofSize: 17, weight: .medium)
+        editor.font = .systemFont(ofSize: LayoutMetrics.inputSize, weight: .medium)
         editor.textColor = .labelColor
         appearance = nil
     }

@@ -12,47 +12,65 @@ final class KeyHandlingTextView: NSTextView {
     var onKey: ((LauncherKey) -> Bool)?
 
     override func keyDown(with event: NSEvent) {
-        if handle(event) { return }
+        if hasMarkedText() {
+            super.keyDown(with: event)
+            return
+        }
+        switch event.keyCode {
+        case 126:
+            if onKey?(.up) == true { return }
+        case 125:
+            if onKey?(.down) == true { return }
+        case 53:
+            if onKey?(.escape) == true { return }
+        default:
+            break
+        }
         super.keyDown(with: event)
     }
 
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if handle(event) { return true }
-        return super.performKeyEquivalent(with: event)
+    override func insertNewline(_ sender: Any?) {
+        if hasMarkedText() {
+            super.insertNewline(sender)
+            return
+        }
+        if onKey?(.enter) == true { return }
+        super.insertNewline(sender)
     }
 
-    private func handle(_ event: NSEvent) -> Bool {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if hasMarkedText() {
+            return super.performKeyEquivalent(with: event)
+        }
         if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "k" {
             return onKey?(.clear) ?? false
         }
-        switch event.keyCode {
-        case 126: return onKey?(.up) ?? false
-        case 125: return onKey?(.down) ?? false
-        case 36, 76: return onKey?(.enter) ?? false
-        case 53: return onKey?(.escape) ?? false
-        default: return false
-        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 
 final class SearchInputView: NSView, NSTextFieldDelegate {
     let iconView = NSImageView()
     let field = NSTextField()
+    private let stack = NSStackView()
     var onQueryChange: ((String) -> Void)?
     var onKey: ((LauncherKey) -> Bool)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
+
         iconView.imageScaling = .scaleProportionallyUpOrDown
         iconView.wantsLayer = true
-        iconView.layer?.cornerRadius = 7
+        iconView.layer?.cornerRadius = (LayoutMetrics.iconSize * 0.22).rounded()
         iconView.layer?.masksToBounds = true
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        iconView.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
-        field.font = .systemFont(ofSize: 17, weight: .medium)
+        field.font = .systemFont(ofSize: LayoutMetrics.inputSize, weight: .medium)
         field.textColor = .labelColor
         field.placeholderString = "Search actions..."
         field.delegate = self
@@ -61,40 +79,41 @@ final class SearchInputView: NSView, NSTextFieldDelegate {
         field.cell?.usesSingleLineMode = true
         field.maximumNumberOfLines = 1
         field.lineBreakMode = .byTruncatingTail
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        addSubview(iconView)
-        addSubview(field)
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = LayoutMetrics.stackSpacing
+        stack.edgeInsets = NSEdgeInsets(
+            top: 0,
+            left: LayoutMetrics.padding,
+            bottom: 0,
+            right: LayoutMetrics.padding
+        )
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(iconView)
+        stack.addArrangedSubview(field)
+        addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.heightAnchor.constraint(equalTo: heightAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: LayoutMetrics.iconSize),
+            iconView.heightAnchor.constraint(equalToConstant: LayoutMetrics.iconSize),
+            iconView.centerYAnchor.constraint(equalTo: field.centerYAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { nil }
-
-    override func layout() {
-        super.layout()
-        let inset = LauncherLayout.padding
-        let icon = LauncherLayout.iconSize
-        iconView.frame = NSRect(
-            x: inset,
-            y: ((bounds.height - icon) / 2).rounded(),
-            width: icon,
-            height: icon
-        )
-
-        let font = field.font ?? .systemFont(ofSize: 17, weight: .medium)
-        let textHeight = ceil(font.ascender - font.descender + 4)
-        let fieldX = iconView.frame.maxX + 12
-        field.frame = NSRect(
-            x: fieldX,
-            y: ((bounds.height - textHeight) / 2).rounded(),
-            width: bounds.width - fieldX - inset,
-            height: textHeight
-        )
-    }
 
     func controlTextDidChange(_ obj: Notification) {
         onQueryChange?(field.stringValue)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if textView.hasMarkedText() { return false }
         switch commandSelector {
         case #selector(NSResponder.moveUp(_:)):
             return onKey?(.up) ?? false
