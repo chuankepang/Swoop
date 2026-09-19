@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+.build.noindex/
+.swiftpm/
+Resources/AppIcon.iconset/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+DerivedData/
+*.app
+*.dSYM
+.idea/
+.vscode/
