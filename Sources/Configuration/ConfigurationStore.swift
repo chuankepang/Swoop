@@ -35,13 +35,6 @@ final class ConfigurationStore {
         preferences.customWebActions.filter(\.isEnabled)
     }
 
-    func allResolvedConfigsForSettings() -> [WebActionConfig] {
-        let builtIns = BuiltInWebActionDefaults.all.map { definition in
-            merge(definition.asConfig(), override: preferences.webOverrides[definition.id])
-        }
-        return builtIns + preferences.customWebActions
-    }
-
     func merge(_ base: WebActionConfig, override: WebActionOverride?) -> WebActionConfig {
         guard let override else { return base }
         var config = base

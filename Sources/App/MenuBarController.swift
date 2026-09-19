@@ -3,12 +3,10 @@ import AppKit
 final class MenuBarController {
     private var statusItem: NSStatusItem?
     private let onOpen: () -> Void
-    private let onSettings: () -> Void
     private let onQuit: () -> Void
 
-    init(onOpen: @escaping () -> Void, onSettings: @escaping () -> Void, onQuit: @escaping () -> Void) {
+    init(onOpen: @escaping () -> Void, onQuit: @escaping () -> Void) {
         self.onOpen = onOpen
-        self.onSettings = onSettings
         self.onQuit = onQuit
     }
 
@@ -27,9 +25,6 @@ final class MenuBarController {
         openItem.keyEquivalent = " "
         openItem.target = self
         menu.addItem(.separator())
-        let settingsItem = menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(.separator())
         let quitItem = menu.addItem(withTitle: "Quit Swoop", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         item.menu = menu
@@ -38,10 +33,6 @@ final class MenuBarController {
 
     @objc private func openLauncher() {
         onOpen()
-    }
-
-    @objc private func openSettings() {
-        onSettings()
     }
 
     @objc private func quit() {

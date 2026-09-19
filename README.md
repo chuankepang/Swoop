@@ -1,99 +1,94 @@
-# Swoop
+<p align="center">
+  <img src="Resources/logo.png" width="128" height="128" alt="Swoop">
+</p>
 
-Lightweight, keyboard-first, fuzzy command launcher for macOS.
+<h1 align="center">Swoop</h1>
 
-Swoop is a tiny native floating launcher. One shortcut, one box, a few results, Enter, done. It is not a Raycast clone: no plugins, no accounts, no cloud.
+<p align="center">
+  <strong>A lightweight, keyboard-first launcher for macOS.</strong><br>
+  One shortcut. One box. Enter. Done.
+</p>
 
-macOS 14+ · Swift / AppKit · MIT
+<p align="center">
+  <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-blue">
+  <img alt="Swift" src="https://img.shields.io/badge/Swift-5-orange">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
+</p>
+
+Swoop is a tiny native AppKit launcher. It stays out of the Dock, lives in the menu bar, and appears over fullscreen apps with **Option + Space**. It is not a Raycast clone: no plugins, no accounts, no cloud.
 
 ## Features
 
 - Global hotkey (`Option + Space`)
-- Borderless floating `NSPanel` that can appear over fullscreen apps
+- Borderless floating panel that can appear over fullscreen apps
 - Two-stage actions: pick what to do, then type the argument
-- Fuzzy ranking with aliases, word initials, subsequence match, usage, and recency
-- Unknown or weak queries fall back to **Search Bing** (Enter searches immediately; `bin` still opens Bing’s two-stage mode)
-- Application launch from `/Applications`, `/System/Applications`, and `~/Applications`
-- Web search via URL templates (Chrome preferred, system browser fallback)
-- Web shortcuts: one-shot site openers (ChatGPT, Grok, Gemini, Bilibili, Douyin, GitHub)
-- Baidu Translate: Chinese → English and English → Chinese (two-stage)
+- Fuzzy ranking with aliases, pinyin, usage, and recency
+- Unknown or weak queries fall back to Bing (Enter searches immediately)
+- App launch from `/Applications`, `/System/Applications`, and `~/Applications`
+- Web search, web shortcuts, and Baidu Translate
 - Spotlight-backed file search (`mdfind` filename metadata)
 - Lock Screen, Sleep, Screen Saver, Finder
-- Native **Settings** window (General / Web Actions / About)
-- Configurable web actions (built-in overrides + custom URLs; `{key}` = two-stage search)
-- Preferred browser (Chrome or system default) and fallback search engine (Bing or Google)
-- Launch at login via `SMAppService`
-- Menu bar extra: Open / Settings / Quit
+- Installs as `/Applications/Swoop.app` (Launchpad / Spotlight)
+- Launch at login when installed to Applications
+- Menu bar extra: **Open Swoop** / **Quit Swoop**
 
-## Installation
+## Requirements
 
-Install the Command Line Tools if needed:
+- macOS 14 or later
+- Xcode Command Line Tools (`xcode-select --install`)
 
-```sh
-xcode-select --install
-```
-
-Clone, then build:
+## Install
 
 ```sh
-git clone https://github.com/YOUR_USERNAME/Swoop.git
+git clone https://github.com/RoboHyperX/Swoop.git
 cd Swoop
-./build.sh --local
-./install.sh        # copy to /Applications/Swoop.app
+./install.sh
+open /Applications/Swoop.app
 ```
 
-`./build.sh` (default) writes **`.build.noindex/Swoop.app`** for development. Use **`./install.sh`** to copy into `/Applications/Swoop.app` (required for Launch at Login). The installer quits a running copy first.
+`./install.sh` builds a local bundle and copies it to **`/Applications/Swoop.app`**, so it shows up in Launchpad, Spotlight, and Applications. Launch at Login is registered automatically from that installed copy.
 
-To install directly:
+The app is ad-hoc signed and is not notarized.
 
-```sh
-./build.sh --install  # build + install to /Applications
-./build.sh --check    # compile only
-```
-
-The local build uses ad-hoc signing and is not notarized.
-
-## Uninstall
+### Uninstall
 
 ```sh
 ./uninstall.sh              # quit, unregister login item, remove /Applications/Swoop.app
 ./uninstall.sh --purge-data # also delete preferences and usage history
 ```
 
-If the app bundle was already deleted manually, remove any leftover login item in **System Settings → General → Login Items**.
+If the app was already deleted by hand, remove any leftover login item in **System Settings → General → Login Items**.
 
-## Build
+## Build from source
 
 ```sh
-./build.sh            # .build.noindex/Swoop.app (default)
-./build.sh --install  # /Applications/Swoop.app
-./install.sh          # local build + copy to /Applications
-./uninstall.sh        # remove /Applications/Swoop.app
+./build.sh            # write .build.noindex/Swoop.app
+./build.sh --install  # build and install to /Applications
+./build.sh --check    # compile only
 ./run.sh              # local build + launch
-./test.sh             # unit tests
+./test.sh             # tests
 ```
 
 Compilation intermediates live in `.build.noindex/`.
 
+If the default Command Line Tools SDK is newer than the installed Swift compiler, the build scripts prefer a macOS 15 SDK when present.
+
 ## Usage
 
-1. Launch Swoop once from `/Applications/Swoop.app`.
+1. Open **Swoop** from Launchpad or `/Applications/Swoop.app` (once).
 2. Press **Option + Space** from anywhere.
 3. Type 2–4 characters until the action you want is first.
-4. **Enter** confirms. Actions that need input (search, files) enter a second stage.
+4. **Enter** confirms. Search and file actions enter a second stage.
 5. **Esc** goes back, then closes.
-6. Open **Settings** from the menu bar, type `settings` / `设置` in the launcher, or press **⌘,**.
-
-Typical flows:
 
 ```text
 chr → Enter                    open Google Chrome
-chat → Enter                   open ChatGPT in Chrome
+chat → Enter                   open ChatGPT
 goo → Enter → robot policy     Google Search
 bin → Enter → query            Bing Search mode
-键盘 → Enter                   Bing search for 键盘 (no extra prompt)
+键盘 → Enter                   Bing search for 键盘
 zh2en → Enter → 键盘           Baidu Translate ZH→EN
-github → Enter                 open GitHub home
+github → Enter                 open GitHub
 ghs → Enter → ManiSkill        GitHub Search
 sch → Enter → diffusion        Google Scholar
 fin → Enter → root.tex         list files, Enter opens
@@ -111,85 +106,34 @@ loc → Enter                    lock screen
 | ⌘K | Clear the current query |
 | Click outside | Close |
 
-## Available Actions
+## Actions
 
-Web shortcuts (Enter opens site in Chrome):
+**Web shortcuts** (Enter opens the site): ChatGPT, Grok, Gemini, Bilibili, Douyin, GitHub.
 
-- ChatGPT (`chatgpt`, `chat`, `gpt`, `cg`)
-- Grok (`grok`, `xai`)
-- Gemini (`gemini`, `gem`)
-- Bilibili (`bilibili`, `bili`, `b站`)
-- Douyin (`douyin`, `dy`, `抖音`)
-- GitHub (`github`, `gh`, `ghome`)
+**Web search** (two-stage): Google, Bing, GitHub Search, YouTube, Google Scholar, arXiv, Xiaohongshu.
 
-Web search (two-stage):
+**Translation** (two-stage, Baidu): ZH → EN (`zh2en`, `中译英`), EN → ZH (`en2zh`, `英译中`).
 
-- Google Search (`google`, `goo`, `gg`, `g`, `谷歌`)
-- Bing Search (`bing`, `bin`, `bi`, `b`)
-- GitHub Search (`ghs`, `gitsearch`)
-- YouTube Search (`youtube`, `you`, `yt`)
-- Google Scholar (`scholar`, `sch`, `paper`, `学术`)
-- arXiv Search (`arxiv`, `arx`)
-- Xiaohongshu Search (`xiaohongshu`, `xhs`, `red`, `红书`, `小红书`)
+**System:** Lock Screen (`loc`), Sleep, Screen Saver, Finder.
 
-Translation (two-stage, Baidu):
+**Files:** Find Files (`fin`).
 
-- Translate ZH → EN (`zh2en`, `中译英`, `fyen`)
-- Translate EN → ZH (`en2zh`, `英译中`, `fyzh`)
+Applications discovered at launch become first-class actions (`chr` → Google Chrome, `vsc` → Visual Studio Code).
 
-System:
-
-- Settings (`settings`, `pref`, `设置`)
-- Lock Screen (`lock`, `loc`, `lk`, `锁屏`)
-- Sleep
-- Screen Saver
-- Finder
-
-Files:
-
-- Find Files (`find`, `fin`, `files`)
-
-Applications are discovered at launch and become first-class actions (for example `chr` → Google Chrome, `vsc` → Visual Studio Code).
-
-## Project structure
+## Project layout
 
 ```text
-Sources/
-  main.swift
-  App/          lifecycle, controller, menu bar, login item
-  Configuration/ preferences store, built-in defaults, resolver
-  Settings/     native preferences window
-  UI/           NSPanel, input row, candidate list
-  Actions/      unified action types and registry
-  Search/       fuzzy matcher, ranking, search engine
-  Services/     apps, Spotlight, browser, usage, system
-  Hotkey/       global Option+Space
-  Utils/        URL encoding and layout constants
-Tests/
-Scripts/GenerateIcon.swift
-build.sh  install.sh  uninstall.sh  run.sh  test.sh
+Sources/     AppKit launcher, actions, search, services
+Tests/       swiftc test runner
+Scripts/     App icon / logo generator
+build.sh     compile
+install.sh   install to /Applications
+uninstall.sh remove the installed app
+run.sh       local build + launch
+test.sh      tests
 ```
 
-## Development
-
-No third-party packages. The app is compiled with `swiftc` against AppKit, Carbon, and ApplicationServices.
-
-```sh
-./test.sh
-./run.sh
-```
-
-If the default Command Line Tools SDK is newer than the installed Swift compiler, the build scripts automatically prefer a macOS 15 SDK when present.
-
-## Roadmap
-
-- User-configurable hotkey recorder
-- Hide menu bar icon (with recovery path)
-- Watch Application folders for changes
-- Replace `mdfind` with `NSMetadataQuery` if needed
-- Import/export web action presets
-
-Out of scope for this project: AI, plugin stores, clipboard history, window management, accounts, telemetry.
+No third-party packages. Linked frameworks: AppKit, Carbon, ApplicationServices, ServiceManagement.
 
 ## License
 

@@ -89,6 +89,11 @@ for (name, size) in entries {
     }
 }
 
+if let logo = png(from: master, size: 512) {
+    let logoURL = destDir.appendingPathComponent("logo.png")
+    try? logo.write(to: logoURL)
+}
+
 let process = Process()
 process.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 process.arguments = ["-c", "icns", iconset.path, "-o", destURL.path]

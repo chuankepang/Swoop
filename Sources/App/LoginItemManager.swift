@@ -25,17 +25,8 @@ final class LoginItemManager {
         }
     }
 
-    func setEnabled(_ enabled: Bool) throws {
-        if enabled {
-            try SMAppService.mainApp.register()
-        } else {
-            try SMAppService.mainApp.unregister()
-        }
-    }
-
-    func openLoginItemsSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
-            NSWorkspace.shared.open(url)
-        }
+    func ensureRegistered() {
+        guard currentStatus() == .disabled else { return }
+        try? SMAppService.mainApp.register()
     }
 }

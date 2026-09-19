@@ -12,7 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let loginItemManager = LoginItemManager()
     private var controller: LauncherController?
     private var menuBar: MenuBarController?
-    private var settingsWindow: SettingsWindowController?
     private var configObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -27,9 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hotkey.registerDefault()
 
+        loginItemManager.ensureRegistered()
         menuBar = MenuBarController(
             onOpen: { [weak self] in self?.controller?.show() },
-            onSettings: { [weak self] in self?.openSettings() },
             onQuit: { [weak self] in self?.quit() }
         )
         menuBar?.install()
@@ -65,15 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    @objc private func openSettings() {
-        let window = SettingsWindowController.shared(
-            store: configurationStore,
-            loginItemManager: loginItemManager
-        )
-        settingsWindow = window
-        window.bringToFront()
-    }
-
     @objc private func quit() {
         NSApp.terminate(nil)
     }
@@ -81,7 +71,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func registerActions() {
         registry.register(FileSearchAction(spotlight: spotlight))
         registry.register([
-            SettingsAction(openSettings: { [weak self] in self?.openSettings() }),
             SystemAction(
                 id: "system.lock",
                 title: "Lock Screen",
@@ -152,10 +141,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         item.submenu = appMenu
         menu.addItem(item)
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        appMenu.addItem(settingsItem)
-        appMenu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit Swoop", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         appMenu.addItem(quitItem)
