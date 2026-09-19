@@ -22,6 +22,7 @@ final class FileSearchAction: LauncherAction {
     }
 
     func execute(input: String?) {
+        DebugLog.fileSearch("execute() is not used for Find Files; browse phase opens URLs")
         _ = input
     }
 
@@ -32,7 +33,9 @@ final class FileSearchAction: LauncherAction {
             return
         }
         spotlight.search(query: trimmed) { files in
+            DebugLog.fileSearch("Query: \(trimmed)")
             let ranked = Self.rank(files, query: trimmed)
+            DebugLog.fileSearch("Parsed result count: \(ranked.count)")
             completion(ranked)
         }
     }

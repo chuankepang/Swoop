@@ -3,10 +3,16 @@ import Foundation
 final class SearchEngine {
     private let registry: ActionRegistry
     private let history: UsageHistory
+    private weak var configurationStore: ConfigurationStore?
 
-    init(registry: ActionRegistry, history: UsageHistory) {
+    init(registry: ActionRegistry, history: UsageHistory, configurationStore: ConfigurationStore? = nil) {
         self.registry = registry
         self.history = history
+        self.configurationStore = configurationStore
+    }
+
+    func attachStore(_ store: ConfigurationStore) {
+        configurationStore = store
     }
 
     func searchActions(query: String, limit: Int = LayoutMetrics.maxVisibleRows) -> [SearchResult] {
@@ -24,9 +30,9 @@ final class SearchEngine {
             }
         }
 
-        return RankingEngine.rank(ranked)
+        var results: [SearchResult] = RankingEngine.rank(ranked)
             .prefix(limit)
-            .compactMap { item in
+            .compactMap { item -> SearchResult? in
                 guard let action = registry.action(id: item.actionID) else { return nil }
                 return SearchResult(
                     actionID: action.id,
@@ -37,6 +43,32 @@ final class SearchEngine {
                     matchReason: item.reason
                 )
             }
+
+        let best = results.first?.score ?? 0
+        if let fallback = fallbackResult(query: trimmed, bestScore: best) {
+            results.insert(fallback, at: 0)
+            if results.count > limit {
+                results = Array(results.prefix(limit))
+            }
+        }
+        return results
+    }
+
+    private func fallbackResult(query: String, bestScore: Double) -> SearchResult? {
+        let engine = configurationStore?.fallbackEngine ?? .bing
+        let actionID = engine.actionID
+        guard let action = registry.action(id: actionID) else { return nil }
+        let needsFallback = bestScore < RankingWeights.strongMatch
+        guard needsFallback else { return nil }
+        let shortName = action.title.replacingOccurrences(of: " Search", with: "")
+        return SearchResult(
+            actionID: actionID,
+            title: "Search \(shortName)",
+            subtitle: query,
+            score: RankingWeights.strongMatch,
+            payload: .immediate(actionID: actionID, input: query),
+            matchReason: "fallback web search"
+        )
     }
 
     private func defaultList(limit: Int) -> [SearchResult] {
@@ -79,6 +111,15 @@ final class SearchEngine {
     private func subtitle(for action: any LauncherAction) -> String {
         switch action.kind {
         case .webSearch: return "Web Search"
+        case .webShortcut: return "Web Shortcut"
+        case .translation:
+            if let configurable = action as? ConfigurableWebAction {
+                return configurable.config.subtitle ?? "Baidu Translate"
+            }
+            if let translation = action as? TranslationAction {
+                return translation.provider.subtitle
+            }
+            return "Baidu Translate"
         case .application: return "Application"
         case .system: return "System"
         case .fileSearch: return "Files"

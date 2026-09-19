@@ -17,9 +17,6 @@ final class CandidateRowView: NSView {
         background.translatesAutoresizingMaskIntoConstraints = false
 
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        iconView.wantsLayer = true
-        iconView.layer?.cornerRadius = 6
-        iconView.layer?.masksToBounds = true
 
         titleLabel.font = .systemFont(ofSize: LayoutMetrics.titleSize, weight: .medium)
         titleLabel.textColor = .labelColor

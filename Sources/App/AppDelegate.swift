@@ -3,23 +3,38 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkey = GlobalHotkeyManager()
     private let registry = ActionRegistry()
+    private let configurationStore = ConfigurationStore()
     private let history = UsageHistory()
     private let apps = ApplicationIndex()
     private let spotlight = SpotlightService()
     private let browser = BrowserLauncher()
     private let system = SystemActionService()
+    private let loginItemManager = LoginItemManager()
     private var controller: LauncherController?
-    private var statusItem: NSStatusItem?
+    private var menuBar: MenuBarController?
+    private var settingsWindow: SettingsWindowController?
+    private var configObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        browser.attachStore(configurationStore)
         registerActions()
+        reloadWebActions()
+        observeConfigurationChanges()
+
         hotkey.onPressed = { [weak self] in
             self?.controller?.toggle()
         }
         hotkey.registerDefault()
-        setupStatusItem()
+
+        menuBar = MenuBarController(
+            onOpen: { [weak self] in self?.controller?.show() },
+            onSettings: { [weak self] in self?.openSettings() },
+            onQuit: { [weak self] in self?.quit() }
+        )
+        menuBar?.install()
         setupMenu()
+
         apps.scan { [weak self] installed in
             self?.registry.register(installed.map { ApplicationAction(app: $0) })
         }
@@ -27,7 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let shouldShow = ProcessInfo.processInfo.arguments.contains("--show")
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            let search = SearchEngine(registry: self.registry, history: self.history)
+            let search = SearchEngine(
+                registry: self.registry,
+                history: self.history,
+                configurationStore: self.configurationStore
+            )
             self.controller = LauncherController(
                 registry: self.registry,
                 searchEngine: search,
@@ -35,6 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             if shouldShow {
                 self.controller?.show()
+            } else if !self.configurationStore.didCompleteFirstPresentation {
+                self.controller?.show()
+                self.configurationStore.markFirstPresentationComplete()
             }
         }
     }
@@ -43,10 +65,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    @objc private func openSettings() {
+        let window = SettingsWindowController.shared(
+            store: configurationStore,
+            loginItemManager: loginItemManager
+        )
+        settingsWindow = window
+        window.bringToFront()
+    }
+
+    @objc private func quit() {
+        NSApp.terminate(nil)
+    }
+
     private func registerActions() {
-        registry.register(WebSearchCatalog.all.map { WebSearchAction(provider: $0, launcher: browser) })
         registry.register(FileSearchAction(spotlight: spotlight))
         registry.register([
+            SettingsAction(openSettings: { [weak self] in self?.openSettings() }),
             SystemAction(
                 id: "system.lock",
                 title: "Lock Screen",
@@ -95,19 +130,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
     }
 
-    private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = IconProvider.menuBarTemplate()
-        item.button?.imagePosition = .imageOnly
-        item.button?.toolTip = "Swoop"
-        let menu = NSMenu()
-        let openItem = menu.addItem(withTitle: "Open Swoop", action: #selector(openLauncher), keyEquivalent: "")
-        openItem.target = self
-        menu.addItem(.separator())
-        let quitItem = menu.addItem(withTitle: "Quit Swoop", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        item.menu = menu
-        statusItem = item
+    private func reloadWebActions() {
+        let actions = WebActionResolver.resolveActions(from: configurationStore, launcher: browser)
+        registry.replaceWebActions(actions)
+        controller?.reloadConfigurationIfNeeded()
+    }
+
+    private func observeConfigurationChanges() {
+        configObserver = NotificationCenter.default.addObserver(
+            forName: .swoopConfigurationDidChange,
+            object: configurationStore,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadWebActions()
+        }
     }
 
     private func setupMenu() {
@@ -116,18 +152,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         item.submenu = appMenu
         menu.addItem(item)
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit Swoop", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         appMenu.addItem(quitItem)
         NSApp.mainMenu = menu
-    }
-
-    @objc private func openLauncher() {
-        controller?.show()
-    }
-
-    @objc private func quit() {
-        NSApp.terminate(nil)
     }
 
     private func finderIcon() -> NSImage {

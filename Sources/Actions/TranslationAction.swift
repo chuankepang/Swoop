@@ -1,19 +1,19 @@
 import AppKit
 
-final class WebSearchAction: LauncherAction {
-    let provider: WebSearchProvider
+final class TranslationAction: LauncherAction {
+    let provider: TranslationProvider
     private let launcher: BrowserLauncher
 
-    init(provider: WebSearchProvider, launcher: BrowserLauncher) {
+    init(provider: TranslationProvider, launcher: BrowserLauncher) {
         self.provider = provider
         self.launcher = launcher
     }
 
-    var id: String { "web.\(provider.id)" }
+    var id: String { "translate.\(provider.id)" }
     var title: String { provider.title }
     var aliases: [String] { provider.aliases }
     var keywords: [String] { provider.keywords }
-    var kind: ActionKind { .webSearch }
+    var kind: ActionKind { .translation }
     var requiresInput: Bool { true }
     var inputPlaceholder: String? { provider.placeholder }
     lazy var icon: NSImage? = IconProvider.brand(provider.mark)
@@ -33,16 +33,12 @@ final class WebSearchAction: LauncherAction {
         completion([
             SearchResult(
                 actionID: id,
-                title: "Search \(shortName)",
+                title: provider.title,
                 subtitle: trimmed,
                 score: RankingWeights.exactTitle,
                 payload: .prompt(text: trimmed),
                 matchReason: "prompt"
             )
         ])
-    }
-
-    private var shortName: String {
-        title.replacingOccurrences(of: " Search", with: "")
     }
 }

@@ -11,7 +11,13 @@ final class LauncherController: NSObject, NSWindowDelegate {
     private var searchTimer: Timer?
     private var suppressResignClose = false
     private var shownAt: TimeInterval = 0
+    private var confirmLockUntil: TimeInterval = 0
+    private var fileSearchGeneration = 0
+    private var fileSearchInFlight = false
+    private var isHiding = false
     private let launcherIcon = IconProvider.launcherState()
+    private let showDuration: TimeInterval = 0.14
+    private let hideDuration: TimeInterval = 0.10
 
     init(registry: ActionRegistry, searchEngine: SearchEngine, history: UsageHistory) {
         self.registry = registry
@@ -42,6 +48,7 @@ final class LauncherController: NSObject, NSWindowDelegate {
     }
 
     func show(error: String? = nil) {
+        isHiding = false
         machine.show()
         shownAt = ProcessInfo.processInfo.systemUptime
         root.input.field.stringValue = ""
@@ -49,9 +56,12 @@ final class LauncherController: NSObject, NSWindowDelegate {
         updateChrome(error: error)
         resize()
         panel.placeCentered()
+        panel.alphaValue = 0
+        root.setPresentedScale(0.98)
+        suppressResignClose = true
         stealFocus()
-        DispatchQueue.main.async { [weak self] in
-            self?.stealFocus()
+        animatePresentation(visible: true) { [weak self] in
+            self?.suppressResignClose = false
         }
     }
 
@@ -61,6 +71,13 @@ final class LauncherController: NSObject, NSWindowDelegate {
         machine.query = ""
         machine.selectedIndex = 0
         hidePanel()
+    }
+
+    func reloadConfigurationIfNeeded() {
+        guard case .actionSelection = machine.phase else { return }
+        refreshCandidates()
+        updateChrome()
+        resize()
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -95,6 +112,11 @@ final class LauncherController: NSObject, NSWindowDelegate {
             renderList()
             return true
         case .enter:
+            let now = ProcessInfo.processInfo.systemUptime
+            if now < confirmLockUntil {
+                return true
+            }
+            confirmLockUntil = now + 0.12
             confirm()
             return true
         case .escape:
@@ -138,14 +160,23 @@ final class LauncherController: NSObject, NSWindowDelegate {
         case .hidden:
             return
         case .browsingFiles(let actionID):
-            guard let selected = selectedCandidate(), case .file(let url) = selected.payload else { return }
+            guard let selected = selectedCandidate(), case .file(let url) = selected.payload else {
+                DebugLog.fileSearch("Enter ignored: no file candidate selected in-flight=\(fileSearchInFlight)")
+                return
+            }
+            DebugLog.fileSearch("Opening \(url.path)")
             finish {
                 self.history.record(actionID: actionID)
-                NSWorkspace.shared.open(url)
+                let opened = NSWorkspace.shared.open(url)
+                if !opened {
+                    DebugLog.fileSearch("NSWorkspace.open failed for \(url.path)")
+                    self.show(error: "Could not open \(url.lastPathComponent)")
+                }
             }
         case .awaitingInput(let actionID):
             guard let action = registry.action(id: actionID) else { return }
             let input = root.input.field.stringValue
+            DebugLog.fileSearch("Enter pressed phase=awaitingInput action=\(actionID) query=\(input)")
             let command = machine.confirm(
                 selectedActionID: actionID,
                 requiresInput: true,
@@ -155,6 +186,10 @@ final class LauncherController: NSObject, NSWindowDelegate {
             perform(command)
         case .actionSelection:
             guard let selected = selectedCandidate() else { return }
+            if case .immediate(let actionID, let input) = selected.payload {
+                perform(.execute(actionID: actionID, input: input))
+                return
+            }
             guard let action = registry.action(id: selected.actionID) else { return }
             let command = machine.confirm(
                 selectedActionID: action.id,
@@ -182,9 +217,22 @@ final class LauncherController: NSObject, NSWindowDelegate {
             hidePanel()
         case .searchFiles(let actionID, let query):
             guard let action = registry.action(id: actionID) else { return }
+            fileSearchGeneration += 1
+            let token = fileSearchGeneration
+            fileSearchInFlight = true
+            DebugLog.fileSearch("Starting Spotlight query token=\(token)")
             action.inputCandidates(query: query) { [weak self] results in
                 guard let self else { return }
-                guard case .browsingFiles(let id) = self.machine.phase, id == actionID else { return }
+                guard token == self.fileSearchGeneration else {
+                    DebugLog.fileSearch("Dropping stale UI update token=\(token)")
+                    return
+                }
+                self.fileSearchInFlight = false
+                guard case .browsingFiles(let id) = self.machine.phase, id == actionID else {
+                    DebugLog.fileSearch("Results arrived but phase changed")
+                    return
+                }
+                DebugLog.fileSearch("Updating UI count=\(results.count)")
                 self.candidates = results
                 self.machine.selectedIndex = 0
                 self.renderList()
@@ -192,6 +240,7 @@ final class LauncherController: NSObject, NSWindowDelegate {
                 self.panel.makeFirstResponder(self.root.input.field)
             }
         case .openFile:
+            DebugLog.fileSearch("openFile command ignored at perform(); browsingFiles handles selection")
             return
         case .execute(let actionID, let input):
             finish {
@@ -207,20 +256,50 @@ final class LauncherController: NSObject, NSWindowDelegate {
     }
 
     private func finish(work: @escaping () -> Void) {
-        suppressResignClose = true
-        hidePanel()
         machine.phase = .hidden
         machine.query = ""
         machine.selectedIndex = 0
-        DispatchQueue.main.async {
+        hidePanel {
             work()
-            self.suppressResignClose = false
         }
     }
 
-    private func hidePanel() {
+    private func hidePanel(completion: (() -> Void)? = nil) {
+        guard !isHiding else { return }
         searchTimer?.invalidate()
-        panel.orderOut(nil)
+        guard panel.isVisible else {
+            completion?()
+            return
+        }
+        isHiding = true
+        suppressResignClose = true
+        animatePresentation(visible: false) { [weak self] in
+            guard let self else { return }
+            self.panel.orderOut(nil)
+            self.panel.alphaValue = 1
+            self.root.resetPresentation()
+            self.isHiding = false
+            self.suppressResignClose = false
+            completion?()
+        }
+    }
+
+    private func animatePresentation(visible: Bool, completion: (() -> Void)? = nil) {
+        let duration = visible ? showDuration : hideDuration
+        let targetScale: CGFloat = visible ? 1 : 0.98
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: visible ? .easeOut : .easeIn)
+            panel.animator().alphaValue = visible ? 1 : 0
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: visible ? .easeOut : .easeIn)
+            context.allowsImplicitAnimation = true
+            root.setPresentedScale(targetScale)
+        } completionHandler: {
+            completion?()
+        }
     }
 
     private func selectedCandidate() -> SearchResult? {
@@ -231,9 +310,11 @@ final class LauncherController: NSObject, NSWindowDelegate {
     private func scheduleDynamicSearch(action: any LauncherAction, query: String) {
         searchTimer?.invalidate()
         let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
+            DebugLog.fileSearch("Debounced preview Query: \(query)")
             action.inputCandidates(query: query) { results in
                 guard let self else { return }
                 guard case .awaitingInput(let id) = self.machine.phase, id == action.id else { return }
+                DebugLog.fileSearch("Updating UI preview count=\(results.count)")
                 self.candidates = results
                 if self.machine.selectedIndex >= results.count {
                     self.machine.selectedIndex = 0
@@ -261,7 +342,9 @@ final class LauncherController: NSObject, NSWindowDelegate {
                 break
             }
             if action.inputConfirmBehavior == .searchThenBrowse {
-                candidates = []
+                if machine.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    candidates = []
+                }
                 if !machine.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     scheduleDynamicSearch(action: action, query: machine.query)
                 }

@@ -33,7 +33,7 @@ enum WebSearchCatalog {
         WebSearchProvider(
             id: "github",
             title: "GitHub Search",
-            aliases: ["github", "git", "gh"],
+            aliases: ["ghs", "gitsearch", "githubsearch", "search github", "git search"],
             keywords: ["code", "repo"],
             urlTemplate: "https://github.com/search?q={key}",
             mark: .github,

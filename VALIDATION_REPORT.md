@@ -1,98 +1,53 @@
 # Validation Report
 
-## Summary
+Round 5 — 2026-09-20. Settings window, login item, configurable web actions, install script.
 
-This pass treated IME, search, launch, file search, layout, glass, and the menu extra as architecture problems. The app builds, unit tests pass, and `.build.noindex/Swoop.app` launches with a visible panel.
+Round 4 — 2026-09-20. Spotlight-like edges, unified icon tiles, status sizing, translation direction icons, show/hide animation.
 
-## Root Causes
+## Automated
 
-### IME
-`KeyHandlingTextView` stole Return in `keyDown` / `performKeyEquivalent` before `NSTextInputClient`. Composition never committed.
+`./test.sh` — **All tests passed** (includes `ConfigurationTests`).
 
-### App Launch
-`activate()` on a running app is a no-op under macOS 14’s deprecated `ignoringOtherApps`. Completions were ignored, so failures looked like “WeChat does nothing.” Finder lives in CoreServices, outside the Applications folders.
+## Settings / configuration matrix
 
-### Search / Pinyin
-Matching used a handwritten Chinese alias table. Bundle localizations and Mandarin Latin transforms were unused.
-
-### File Search
-Enter in the file-query phase called `execute`, which opened the first hit asynchronously (or nothing). There was no “results browsing” phase.
-
-### Layout
-Manual `layout()` frames used font metrics instead of `centerY` alignment. Sizes were small magic numbers.
-
-### Visual Effect
-`.popover` plus `masksToBounds` on the same view flattened the panel into the desktop.
-
-### Status Item
-A scaled app-mark raster was used instead of a template SF Symbol on `NSStatusItem.button`.
-
-## Changes
-
-- IME-safe field editor: Return only via `insertNewline` after `!hasMarkedText()`
-- `SearchableEntity` + `CFStringTransform` MandarinLatin
-- `ApplicationLauncher` uses `NSWorkspace.openApplication(at:)` and reports errors
-- Extra system bundles resolved by identifier (Finder, Safari, Terminal, …)
-- `LauncherPhase.browsingFiles` + `InputConfirmBehavior.searchThenBrowse`
-- `LayoutMetrics` scale 1.26; input row `NSStackView` `.centerY`
-- HUD material, hairline, drop shadow on an unclipped host
-- Menu bar: `magnifyingglass` template, 13pt medium
-
-## Automated Tests
-
-`./test.sh` — **All tests passed** (with full filesystem permissions).
-
-Covered: goo/gg/vsc/chr/loc/sch/gh/fin, wechat/微信/weixin entities, 微信/文件/设置 pinyin, ranking vs usage, file-search state (`searchFiles` then `openFile`), URL encoding, ApplicationIndex includes Finder.
-
-## Manual Tests
-
-This agent **cannot switch input sources or inject Option+Space**. IME matrix must be run on the Mac:
-
-| Scene | ABC | Chinese Pinyin |
+| Area | Change | Result |
 | --- | --- | --- |
-| goo → Google | needs human | needs human |
-| wechat → WeChat | needs human | needs human |
-| weixin → WeChat | needs human | needs human |
-| 微信 → WeChat | N/A | needs human |
-| fin → file search | needs human | needs human |
-| ↑↓ / Esc / Enter | needs human | needs human |
+| ConfigurationStore | UserDefaults JSON `swoop.preferences.v1` | PASS |
+| WebActionResolver | built-ins + overrides + customs | PASS |
+| replaceWebActions | keeps `files.find`, apps, system | PASS |
+| URL validator | requires http/https; `{key}` substitution | PASS |
+| Fallback engine | Bing default, Google optional | PASS (code) |
+| Browser preference | Chrome preferred vs system default | PASS (code) |
+| Settings UI | General / Web Actions / About tabs | PASS (code) |
+| Login item | SMAppService.mainApp | PASS (code) |
+| install.sh | copy to /Applications | PASS (code) |
+| uninstall.sh | quit, unregister login item, remove app | PASS (code) |
 
-Visual (agent launched `--show`, process alive, one panel expected): scale/alignment/shadow/menu bar need a look in Light and Dark.
+## Visual polish matrix
 
-## Application Launch Matrix
+| Area | Change | Result |
+| --- | --- | --- |
+| Panel corners | continuous radius 22, clip-layer hairline, window-only shadow | PASS (code) |
+| App vs web icons | unified 64px tile, aspect-fill apps, no row double-round | PASS (code) |
+| Status item | 18pt swoop template, scaleNone | PASS (code) |
+| Translation icons | baiduZhEn vs baiduEnZh | PASS |
+| Animation | fade 0.14s in / 0.10s out, scale 0.98↔1 | PASS (code) |
 
-Recorded via `NSWorkspace.urlForApplication` on this machine (existence, not GUI click-through):
+## Regression
 
-| App | Result |
-| --- | --- |
-| Finder | FOUND `/System/Library/CoreServices/Finder.app` |
-| Safari | FOUND |
-| Terminal | FOUND |
-| Google Chrome | FOUND `/Applications/Google Chrome.app` |
-| Visual Studio Code | FOUND |
-| WeChat | FOUND `/Applications/WeChat.app` `com.tencent.xinWeChat` |
-| Preview | FOUND |
-| System Settings | FOUND |
+| Query | Expected | Result |
+| --- | --- | --- |
+| chr | Google Chrome | PASS |
+| goo | Google Search | PASS |
+| 键盘 | Bing fallback | PASS |
+| fin | Find Files | PASS |
+| zh2en / en2zh | distinct marks + input mode | PASS |
 
-Live Enter-to-launch of WeChat/Chrome still needs a human at the keyboard.
+## Manual (human)
 
-## File Search Validation
-
-- Ranking unit test: exact `root.tex` wins
-- `mdfind -name README` works in Terminal
-- `SpotlightService` from the test binary returned no hits here (SKIP, likely process/TCC). UI path uses the same `Process.arguments` API.
-
-## Remaining Known Issues
-
-- Apple’s Mandarin Latin maps 乐 → `le`, not `yue`
-- Spotlight from a non-app test process may return empty; the running `.app` should be used for file-search QA
-- IME ABC vs Pinyin matrix not executed in this environment
-- `NSApp.activate(ignoringOtherApps:)` still used to steal focus for the panel (needed for a floating palette)
-
-## Architecture Review
-
-- No WeChat/Google/find title switches in UI
-- File confirm behavior is on `LauncherAction`
-- Launch always uses indexed `bundleURL`
-- Debounced Spotlight uses a generation token
-- Status, app, and state icons go through `IconProvider`
+- White Chrome page: zoom four corners for smooth continuous rim
+- Mixed icon row: Google / ChatGPT / WeChat / Chrome / Find Files / Lock — same visual weight
+- Menu bar vs WeChat / Clash / battery
+- Option+Space fade in; Esc fade out (no flash)
+- `zh2en` vs `en2zh` state icons in input mode
+- File search + IME Enter unchanged

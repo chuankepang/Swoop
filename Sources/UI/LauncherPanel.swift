@@ -15,10 +15,10 @@ final class LauncherPanel: NSPanel {
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)))
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false
+        hasShadow = true
         isMovableByWindowBackground = true
         hidesOnDeactivate = false
-        animationBehavior = .utilityWindow
+        animationBehavior = .none
         collectionBehavior = [.fullScreenAuxiliary, .canJoinAllSpaces, .transient, .ignoresCycle]
         titleVisibility = .hidden
         titlebarAppearsTransparent = true

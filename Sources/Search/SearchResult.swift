@@ -10,6 +10,7 @@ struct SearchResult {
 
     enum Payload {
         case action
+        case immediate(actionID: String, input: String)
         case file(url: URL)
         case prompt(text: String)
     }

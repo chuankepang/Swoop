@@ -1,12 +1,20 @@
 import AppKit
 
+enum IconRole {
+    case application
+    case brand
+    case system
+    case file
+    case state
+}
+
 enum IconProvider {
     static func application(_ source: NSImage) -> NSImage {
         ActionIconFactory.roundedAppIcon(source)
     }
 
     static func file(at url: URL) -> NSImage {
-        ActionIconFactory.fileIcon(at: url)
+        ActionIconFactory.roundedAppIcon(NSWorkspace.shared.icon(forFile: url.path))
     }
 
     static func brand(_ mark: BrandMark) -> NSImage {
@@ -22,9 +30,16 @@ enum IconProvider {
     }
 
     static func menuBarTemplate() -> NSImage {
-        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-        let base = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Swoop")
-        let image = base?.withSymbolConfiguration(config) ?? base ?? NSImage(size: NSSize(width: 18, height: 18))
+        let glyph = IconMetrics.statusGlyphSize
+        let image = NSImage(size: NSSize(width: glyph, height: glyph), flipped: false) { rect in
+            ActionIconFactory.drawSwoop(
+                in: rect.insetBy(dx: IconMetrics.statusContentInset, dy: IconMetrics.statusContentInset),
+                color: .black,
+                weight: 0.18
+            )
+            return true
+        }
+        image.size = NSSize(width: glyph, height: glyph)
         image.isTemplate = true
         return image
     }

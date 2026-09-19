@@ -61,9 +61,6 @@ final class SearchInputView: NSView, NSTextFieldDelegate {
         wantsLayer = true
 
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        iconView.wantsLayer = true
-        iconView.layer?.cornerRadius = (LayoutMetrics.iconSize * 0.22).rounded()
-        iconView.layer?.masksToBounds = true
         iconView.setContentHuggingPriority(.required, for: .horizontal)
         iconView.setContentCompressionResistancePriority(.required, for: .horizontal)
 

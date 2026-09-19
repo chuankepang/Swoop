@@ -10,6 +10,8 @@
     <string>local.swoop.launcher</string>
     <key>CFBundleName</key>
     <string>Swoop</string>
+    <key>CFBundleDisplayName</key>
+    <string>Swoop</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

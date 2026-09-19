@@ -29,7 +29,9 @@ func runFuzzyMatcherTests() {
         ("Google Search", ["google", "goo", "go", "gg", "g", "谷歌"], ["search"]),
         ("Google Chrome", ["chrome", "chr", "gc"], ["app"]),
         ("Google Scholar", ["scholar", "sch", "paper", "学术"], ["papers"]),
-        ("GitHub Search", ["github", "git", "gh"], ["code"]),
+        ("GitHub Search", ["ghs", "gitsearch", "githubsearch"], ["code"]),
+        ("GitHub", ["github", "gh", "ghome"], ["code"]),
+        ("ChatGPT", ["chatgpt", "chat", "gpt", "cg"], ["ai"]),
         ("Bing Search", ["bing", "bin", "bi", "b"], ["search"]),
         ("Lock Screen", ["lock", "loc", "lk", "锁屏"], ["security"]),
         ("Find Files", ["find", "fin", "files", "file", "查找"], ["search"]),
@@ -44,7 +46,9 @@ func runFuzzyMatcherTests() {
     TestSupport.expectEqual(topTitle(query: "chr", items: catalog), "Google Chrome", "chr → Google Chrome")
     TestSupport.expectEqual(topTitle(query: "loc", items: catalog), "Lock Screen", "loc → Lock Screen")
     TestSupport.expectEqual(topTitle(query: "sch", items: catalog), "Google Scholar", "sch → Google Scholar")
-    TestSupport.expectEqual(topTitle(query: "gh", items: catalog), "GitHub Search", "gh → GitHub Search")
+    TestSupport.expectEqual(topTitle(query: "gh", items: catalog), "GitHub", "gh → GitHub shortcut")
+    TestSupport.expectEqual(topTitle(query: "ghs", items: catalog), "GitHub Search", "ghs → GitHub Search")
+    TestSupport.expectEqual(topTitle(query: "chat", items: catalog), "ChatGPT", "chat → ChatGPT")
     TestSupport.expectEqual(topTitle(query: "fin", items: catalog), "Find Files", "fin → Find Files")
 
     let wechat = SearchableEntity.build(displayName: "WeChat", names: ["WeChat", "微信"], aliases: [], keywords: ["app"])
@@ -130,6 +134,114 @@ func runURLEncoderTests() {
     TestSupport.expectEqual(url?.absoluteString, "https://www.google.com/search?q=robot%20manipulation", "template replacement")
 }
 
+func makeTestRegistry() -> ActionRegistry {
+    let registry = ActionRegistry()
+    let browser = BrowserLauncher()
+    registry.register(WebSearchCatalog.all.map { WebSearchAction(provider: $0, launcher: browser) })
+    registry.register(WebShortcutCatalog.all.map { WebShortcutAction(provider: $0, launcher: browser) })
+    registry.register(TranslationCatalog.all.map { TranslationAction(provider: $0, launcher: browser) })
+    registry.register(FileSearchAction(spotlight: SpotlightService()))
+    return registry
+}
+
+func runSearchFallbackTests() {
+    let registry = makeTestRegistry()
+    let defaults = UserDefaults(suiteName: "local.swoop.tests.fallback")!
+    defaults.removePersistentDomain(forName: "local.swoop.tests.fallback")
+    let history = UsageHistory(defaults: defaults)
+    let placeholder = NSImage(size: NSSize(width: 64, height: 64))
+    registry.register(ApplicationAction(app: InstalledApp(
+        displayName: "Google Chrome",
+        names: ["Google Chrome", "Chrome"],
+        bundleIdentifier: "com.google.Chrome",
+        url: URL(fileURLWithPath: "/Applications/Google Chrome.app"),
+        icon: placeholder
+    )))
+    registry.register(ApplicationAction(app: InstalledApp(
+        displayName: "WeChat",
+        names: ["WeChat", "微信"],
+        bundleIdentifier: "com.tencent.xinWeChat",
+        url: URL(fileURLWithPath: "/Applications/WeChat.app"),
+        icon: placeholder
+    )))
+    let engine = SearchEngine(registry: registry, history: history)
+
+    func first(_ query: String) -> SearchResult? {
+        engine.searchActions(query: query).first
+    }
+
+    func isFallback(_ result: SearchResult?) -> Bool {
+        guard let result, case .immediate(let actionID, let input) = result.payload else { return false }
+        return actionID == "web.bing" && input == result.subtitle
+    }
+
+    TestSupport.expectEqual(first("chr")?.title, "Google Chrome", "chr → Chrome over Bing")
+    TestSupport.expect(!isFallback(first("chr")), "chr is not fallback")
+    TestSupport.expectEqual(first("goo")?.title, "Google Search", "goo → Google Search over Bing")
+    TestSupport.expectEqual(first("wechat")?.title, "WeChat", "wechat → WeChat")
+    TestSupport.expectEqual(first("weixin")?.title, "WeChat", "weixin → WeChat")
+    TestSupport.expectEqual(first("微信")?.title, "WeChat", "微信 → WeChat")
+    TestSupport.expect(isFallback(first("键盘")), "键盘 → Bing fallback first")
+    TestSupport.expectEqual(first("键盘")?.title, "Search Bing", "fallback title")
+    TestSupport.expectEqual(first("键盘")?.subtitle, "键盘", "fallback subtitle is query")
+    TestSupport.expect(isFallback(first("abcdefghijklmnop_unique")), "unknown query → Bing fallback")
+    TestSupport.expectEqual(first("fin")?.title, "Find Files", "fin → Find Files")
+
+    let empty = engine.searchActions(query: "   ")
+    TestSupport.expect(!empty.contains(where: { isFallback($0) }), "blank query must not Bing-search")
+    TestSupport.expect(!empty.isEmpty, "blank query still shows recents/defaults")
+}
+
+func runSpotlightQueryTests() {
+    let predicate = SpotlightService.filenamePredicate("root.tex")
+    TestSupport.expect(predicate.contains("kMDItemFSName"), "filename metadata query")
+    TestSupport.expect(predicate.contains("root.tex"), "query embedded")
+    let quoted = SpotlightService.filenamePredicate(#"a"b"#)
+    TestSupport.expect(quoted.contains(#"\""#), "quotes escaped for mdfind")
+    TestSupport.expect(SpotlightService.filenamePredicate("论文").contains("论文"), "UTF-8 filename query")
+}
+
+func runWebShortcutTests() {
+    let registry = makeTestRegistry()
+    let defaults = UserDefaults(suiteName: "local.swoop.tests.shortcuts")!
+    defaults.removePersistentDomain(forName: "local.swoop.tests.shortcuts")
+    let engine = SearchEngine(registry: registry, history: UsageHistory(defaults: defaults))
+
+    func first(_ query: String) -> SearchResult? {
+        engine.searchActions(query: query).first
+    }
+
+    TestSupport.expectEqual(first("chat")?.title, "ChatGPT", "chat → ChatGPT")
+    TestSupport.expectEqual(first("grok")?.title, "Grok", "grok → Grok")
+    TestSupport.expectEqual(first("gem")?.title, "Gemini", "gem → Gemini")
+    TestSupport.expectEqual(first("bili")?.title, "Bilibili", "bili → Bilibili")
+    TestSupport.expectEqual(first("dou")?.title, "Douyin", "dou → Douyin")
+    TestSupport.expectEqual(first("github")?.title, "GitHub", "github → GitHub home")
+    TestSupport.expectEqual(registry.action(id: "shortcut.chatgpt")?.requiresInput, false, "ChatGPT is immediate")
+}
+
+func runTranslationURLTests() {
+    let zhURL = QueryURLEncoder.url(from: "https://fanyi.baidu.com/#zh/en/{key}", key: "键盘")
+    TestSupport.expectEqual(zhURL?.absoluteString, "https://fanyi.baidu.com/#zh/en/%E9%94%AE%E7%9B%98", "zh→en URL")
+    let enURL = QueryURLEncoder.url(from: "https://fanyi.baidu.com/#en/zh/{key}", key: "robot manipulation policy")
+    TestSupport.expectEqual(enURL?.absoluteString, "https://fanyi.baidu.com/#en/zh/robot%20manipulation%20policy", "en→zh URL")
+
+    let registry = makeTestRegistry()
+    let defaults = UserDefaults(suiteName: "local.swoop.tests.translate")!
+    defaults.removePersistentDomain(forName: "local.swoop.tests.translate")
+    let engine = SearchEngine(registry: registry, history: UsageHistory(defaults: defaults))
+    TestSupport.expectEqual(engine.searchActions(query: "zh2en").first?.title, "Translate ZH → EN", "zh2en alias")
+    TestSupport.expectEqual(engine.searchActions(query: "en2zh").first?.title, "Translate EN → ZH", "en2zh alias")
+    TestSupport.expectEqual(engine.searchActions(query: "中译英").first?.title, "Translate ZH → EN", "中译英 alias")
+    TestSupport.expectEqual(registry.action(id: "translate.zh2en")?.requiresInput, true, "translation requires input")
+
+    let zhIcon = TranslationCatalog.all.first(where: { $0.id == "zh2en" })?.mark
+    let enIcon = TranslationCatalog.all.first(where: { $0.id == "en2zh" })?.mark
+    TestSupport.expectEqual(zhIcon, .baiduZhEn, "zh2en uses direction icon")
+    TestSupport.expectEqual(enIcon, .baiduEnZh, "en2zh uses direction icon")
+    TestSupport.expect(zhIcon != enIcon, "translation marks differ")
+}
+
 func runFileSearchTests() {
     let files = [
         SpotlightFile(name: "root.tex", url: URL(fileURLWithPath: "/Users/demo/Project/root.tex")),
@@ -178,17 +290,18 @@ func runFileSearchIntegrationTests() {
     FileManager.default.createFile(atPath: path, contents: Data("swoop".utf8))
     print("File search: created \(path). New files may not be in Spotlight yet.")
 
-    let semaphore = DispatchSemaphore(value: 0)
-    var foundIndexed = false
-    service.search(query: "README", limit: 5) { files in
-        foundIndexed = !files.isEmpty
-        print("  mdfind Info.plist hits=\(files.count)")
-        semaphore.signal()
+    var files: [SpotlightFile] = []
+    service.search(query: "README", limit: 5) { result in
+        files = result
+        print("  mdfind README hits=\(result.count)")
     }
-    _ = semaphore.wait(timeout: .now() + 8)
-    if foundIndexed {
-        TestSupport.expect(true, "SpotlightService parsed results")
-    } else {
+    let deadline = Date().addingTimeInterval(8)
+    while files.isEmpty && Date() < deadline {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+    if files.isEmpty {
         print("  SKIP Spotlight index returned no README hits in home")
+    } else {
+        TestSupport.expect(files.contains(where: { $0.name.localizedCaseInsensitiveContains("readme") || $0.url.path.contains("README") }), "README filename results")
     }
 }

@@ -37,5 +37,6 @@ xcrun swiftc \
   -o .build.noindex/SwoopTests \
   -framework AppKit \
   -framework Carbon \
-  -framework ApplicationServices
+  -framework ApplicationServices \
+  -framework ServiceManagement
 .build.noindex/SwoopTests

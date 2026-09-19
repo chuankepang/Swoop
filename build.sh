@@ -19,7 +19,7 @@ if [[ -z "${SDKROOT:-}" ]]; then
       ;;
   esac
 fi
-mode="${1:---install}"
+mode="${1:---local}"
 if [[ "$mode" != "--install" && "$mode" != "--check" && "$mode" != "--local" ]]; then
   printf 'Usage: %s [--install|--check|--local]\n' "$0" >&2
   exit 2
@@ -40,7 +40,8 @@ xcrun swiftc \
   -o "$compiled" \
   -framework AppKit \
   -framework Carbon \
-  -framework ApplicationServices
+  -framework ApplicationServices \
+  -framework ServiceManagement
 
 plutil -lint Info.plist >/dev/null
 
